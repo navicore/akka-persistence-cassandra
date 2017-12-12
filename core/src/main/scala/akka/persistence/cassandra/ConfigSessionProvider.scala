@@ -148,7 +148,32 @@ class ConfigSessionProvider(system: ActorSystem, config: Config) extends Session
       }
 
       val truststorePath = config.getString("ssl.truststore.path")
-      if (truststorePath != "") {
+
+      if (truststorePath == "jdkDefault") { //ejs trying to use jdk default trustStore
+        println("***************** ejs running jdkDefault ***********************")
+        import javax.net.ssl._
+        import java.security.KeyStore
+        import java.io.FileInputStream
+        import java.io.File
+        val javaHomeDirectory = System.getenv("JAVA_HOME")
+        if (javaHomeDirectory == null || javaHomeDirectory.isEmpty) {
+          throw new Exception("JAVA_HOME not set")
+        }
+        val ssl_keystore_file_path = new StringBuilder(javaHomeDirectory).append("/jre/lib/security/cacerts").toString()
+        val sslKeyStoreFile = new File(ssl_keystore_file_path)
+        val sslKeyStorePassword = "changeit"
+        val keyStore = KeyStore.getInstance("JKS")
+        val is = new FileInputStream(sslKeyStoreFile)
+        keyStore.load(is, sslKeyStorePassword.toCharArray)
+        val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
+        kmf.init(keyStore, sslKeyStorePassword.toCharArray)
+        val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm)
+        tmf.init(keyStore)
+        val sc = SSLContext.getInstance("TLSv1.2")
+        sc.init(kmf.getKeyManagers, tmf.getTrustManagers, null)
+        val sslOptions = RemoteEndpointAwareJdkSSLOptions.builder().withSSLContext(sc).build()
+        b.withSSL(sslOptions)
+      } else if (truststorePath != "") {
         val trustStore = StorePathPasswordConfig(
           truststorePath,
           config.getString("ssl.truststore.password")
